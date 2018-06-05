@@ -601,7 +601,7 @@ void InitDepthBuffer() {
 }
 
 
-void CreateVertexBuffer() {
+void CreateVertexBuffer(uint32_t vertex_count) {
   vertex_size_bytes == 6 * sizeof(float); // x y z w u v
 
   VkBufferCreateInfo bcr_info;
@@ -618,7 +618,7 @@ void CreateVertexBuffer() {
   }
 
   VkMemoryRequirements memory_requirements;
-  vkGetBufferMemoryRequirements(device, vuffer, &memory_requirements);
+  vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
 
   int32_t selected = HostVisibleCoherentMemoryType();
   
@@ -1079,6 +1079,154 @@ void CreatePipeline() {
         device, pipeline_cache, 1, &pipeline_create_info, NULL, &pipeline)) {
   }
   
+}
+
+void Render() {
+  uint32_t image_index;
+  if (VK_SUCCESS != VkAcquireNextImageKHR(
+          device, swapchain, 1000000, present_complete_semapohre,
+           &image_index)) {
+  }
+  VkCommandBuffer command_buffer; // initialize it somewhere
+
+  VkCommandBufferBeginInfo cbb_info;
+  cbb_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cbb_info.pNext = NULL;  // VkDeviceGroupCommandBufferBeginInfo
+  cbb_info.flags = 0;  // VK_COMMAND_BUFFER_USAGE_*
+  cbb_info.pInheritanceInfo = NULL;
+  vkBeginCommandBuffer(command_buffer, &cbb_info);
+
+  VkImageMemoryBarrier imb;
+  imb.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imb.pNext = NULL;
+  imb.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  imb.srcAccessMask = 0;
+  imb.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  imb.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imb.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  imb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  imb.image = swapchain_images[image_index];
+  img.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  img.subresourceRange.baseMipLevel = 0;
+  img.subresourceRange.levelCount = 1;
+  img.subresourceRange.baseArrayLevel = 0;
+  img.subresourceRange.layerCount = 1;
+
+  vkCmdPipelineBarrier(
+      command_buffer,
+      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      0, //  VkDependencyFlagBits,
+      0, NULL, // memory barriers
+      0, NULL, // buffer barriers
+      1, &imb); // image memory barrier
+
+  VkClearValues clear_values[2];
+  clear_values[0].color.float32[0] = 0.2f;
+  clear_values[0].color.float32[1] = 0.2f;
+  clear_values[0].color.float32[2] = 0.2f;
+  clear_values[0].color.float32[3] = 0.2f;
+  clear_values[1].depthStencil.depth = 1.0f;
+  clear_values[1].depthStencil.stencil = 0f;
+
+  VkRenderPassBeginInfo rpb_info;
+  rpb_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  rpb_info.pNext = NULL;  // 
+  rpb_info.renderPass = render_pass;
+  rpb_info.framebuffer = framebuffer;
+  rpb_info.renderArea.offset.x = 0;
+  rpb_info.renderArea.offset.y = 0;
+  rpb_info.renderArea.extent.x = surface_size.x;
+  rpb_info.renderArea.extent.y = surface_size.y;
+  rpb_info.clearValueCount = 2;
+  rpb_info.pClearValues = clear_values;
+
+  vkCmdBeginRenderPass(
+      command_buffer, &rpb_info, VK_SUBPASS_CONTENTS_INLINE);
+  vkCmdBindPipeline(
+      command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+  vkCmdBindDescriptorSets(
+      command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
+      0, 1, &descriptor_set, 0, NULL);
+
+  VkViewport viewport;
+  viewport.width = surface_size.width;
+  viewport.height = surface_size.height;
+  viewport.minDepth = 0.0f;
+  viewport.maxDepth = 1.0f;
+  vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+  VkRect2D scissor;
+  scissor.extent.width = surface_size.width;
+  scissor.extent.height = surface_size.height;
+  vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+  VkBuffer vertex_buffer;  // initialize this
+  VkDeviceSize vertex_buffer_offset = 0;
+  vkCmdBindVertexbuffers(
+      command_buffer, 0, 1, &vertex_buffer, &vertex_buffer_offset);
+  vkCmdDraw(
+      command_buffer, vertex_count, 1, 0, 0);
+
+  vkCmdEndRenderPass(command_buffer);
+
+  VkImageMemoryBarrier imb;
+  imb.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imb.pNext = NULL;
+  imb.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  imb.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imb.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  imb.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT ;
+  imb.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  imb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  imb.image = swapchain_images[image_index];
+  img.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  img.subresourceRange.baseMipLevel = 0;
+  img.subresourceRange.levelCount = 1;
+  img.subresourceRange.baseArrayLevel = 0;
+  img.subresourceRange.layerCount = 1;
+
+  vkCmdPipelineBarrier(
+      command_buffer,
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+      0, //  VkDependencyFlagBits,
+      0, NULL, // memory barriers
+      0, NULL, // buffer barriers
+      1, &imb); // image memory barrier
+  if (VK_SUCCESS != vkEndCommandbuffer(command_buffer)) {
+  }
+
+  VkPipelineStageFlags wait_dst_stage_mask = 
+      VK_IPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+  VkSubmitInfo submit_info;
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.pNext = NULL;
+  submit_info.waitSemaphoreCount = 1;
+  submit_info.pWaitsemapores = &present_complete_semaphore;
+  submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers  = &command_buffer;
+  submit_info.signalSemaphoreCount = 1;
+  submit_info.pSignalSemaphores = &render_complete_semaphore;
+
+  vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+
+
+  VkResult present_result;
+  VkPresentInfoKHR present_info;
+  present_info.stype = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  present_info.pNext = NULL;
+  present_info.waitSemaphoreCount = 1;
+  present_info.pWaitSemaphore = &render_complete_semaphore= 1;
+  present_info.swapchainCount = 1;
+  present_info.pSwapchains = &swapchain;
+  present_info.pImageIndices = &image_index;
+  present_info.pResents = &present_result;
+  
+  vkQueuePresentKHR(graphics_queue, &present_info);
+  vkQueueWaitIdle(graphics_queue);
 }
 
 int main() {
