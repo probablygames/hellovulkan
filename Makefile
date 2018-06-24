@@ -8,4 +8,8 @@ fragment.spirv: fragment.glsl
 	cat fragment.glsl | ~/VulkanSDK/1.1.73.0/x86_64/bin/glslangValidator -V -o fragment.spirv  --stdin -S frag
 
 vulkan: vulkan.cc
-	g++ -Wall -g `pkg-config --libs vulkan` `pkg-config --libs glfw3` ./vulkan.cc -o vulkan
+	g++ -Wall -g -L/usr/lib/x86_64-linux-gnu -lglfw -lvulkan vulkan.cc -o vulkan
+#	g++ -Wall -g `pkg-config --libs vulkan` `pkg-config --libs glfw3` ./vulkan.cc -o vulkan
+
+clean:
+	rm -f vulkan vertex.spirv fragment.spirv

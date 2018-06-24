@@ -1031,8 +1031,8 @@ CreateSwapchain(
   VkExtent2D extent;
   if ((surface_caps.currentExtent.width == 0xFFFFFFFF &&
        surface_caps.currentExtent.height == 0xFFFFFFFF)) {
-    extent.width = 640;
-    extent.height = 480;
+    extent.width = 1920;
+    extent.height = 1080;
   } else {
     extent = surface_caps.currentExtent;
   }
@@ -1329,8 +1329,7 @@ int
 CreateRenderPass(
   VkDevice device,
   VkFormat surface_format,
-  VkRenderPass *render_pass
-)
+  VkRenderPass *render_pass)
 {
   VkAttachmentDescription attachments[2];
 
@@ -1339,9 +1338,9 @@ CreateRenderPass(
   attachments[0].format = surface_format;
   attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
   attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
   attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
@@ -1802,6 +1801,7 @@ ConfigurePipelineDepthStencilState(
   dss->pNext = NULL;
   dss->flags = 0;
   dss->depthTestEnable = VK_FALSE;
+  dss->stencilTestEnable = VK_FALSE;
   dss->depthWriteEnable = VK_FALSE;
   dss->depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
   dss->depthBoundsTestEnable = VK_FALSE;
@@ -2064,12 +2064,12 @@ void BeginRenderPass(
     VkExtent2D surface_extent)
 {
   VkClearValue clear_values[2];
-  clear_values[0].color.float32[0] = 0.2f;
-  clear_values[0].color.float32[1] = 0.2f;
-  clear_values[0].color.float32[2] = 0.2f;
-  clear_values[0].color.float32[3] = 0.2f;
+  clear_values[0].color.float32[0] = 0.0f;
+  clear_values[0].color.float32[1] = 0.0f;
+  clear_values[0].color.float32[2] = 0.8f;
+  clear_values[0].color.float32[3] = 1.0f;
   clear_values[1].depthStencil.depth = 1.0f;
-  clear_values[1].depthStencil.stencil = 0.0f;
+  clear_values[1].depthStencil.stencil = 1.0f;
 
   VkRenderPassBeginInfo rpb;
   rpb.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -2077,7 +2077,7 @@ void BeginRenderPass(
   rpb.renderPass = render_pass;
   rpb.framebuffer = framebuffer;
   rpb.renderArea.offset.x = 0;
-  rpb.renderArea.offset.y= 0;
+  rpb.renderArea.offset.y = 0;
   rpb.renderArea.extent.width = surface_extent.width;
   rpb.renderArea.extent.height = surface_extent.height;
   rpb.clearValueCount = 2;
@@ -2085,6 +2085,31 @@ void BeginRenderPass(
 
   vkCmdBeginRenderPass(
       command_buffer, &rpb, VK_SUBPASS_CONTENTS_INLINE);
+
+/*
+  VkClearAttachment clear_attachments[2];
+  clear_attachments[0].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  clear_attachments[0].colorAttachment = 0;
+  clear_attachments[0].clearValue.color.float32[0] = 0.2f;
+  clear_attachments[0].clearValue.color.float32[1] = 0.2f;
+  clear_attachments[0].clearValue.color.float32[2] = 0.2f;
+  clear_attachments[0].clearValue.color.float32[3] = 1.0f;
+
+  clear_attachments[1].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+  clear_attachments[1].clearValue.depthStencil.depth = 1.0f;
+  clear_attachments[1].clearValue.depthStencil.stencil = 1.0f;
+
+  VkClearRect clear_rect;
+  clear_rect.rect.offset.x = 0;
+  clear_rect.rect.offset.y = 0;
+  clear_rect.rect.extent.width = surface_extent.width;
+  clear_rect.rect.extent.height = surface_extent.height;
+  clear_rect.baseArrayLayer = 0;
+  clear_rect.layerCount = 1;
+
+  vkCmdClearAttachments(
+      command_buffer, 2, clear_attachments, 1, &clear_rect);
+*/
 }
 
 void
@@ -2236,12 +2261,14 @@ Draw(
 
   BeginCommandBuffer(command_buffer);
 
+
   TopOfPipelineImageMemoryBarriers(
       command_buffer, depth_image, texture_image, swapchain_image);
 
   BeginRenderPass (command_buffer, render_pass, framebuffer, surface_extent);
 
-  BindGraphicsPipeline (command_buffer, pipeline, pipeline_layout, descriptor_set);
+  BindGraphicsPipeline (
+      command_buffer, pipeline, pipeline_layout, descriptor_set);
 
   SetViewportAndScissor (command_buffer, surface_extent);
 
@@ -2294,16 +2321,21 @@ CreateScene(
     VkDeviceMemory *texture_memory,
     VkImageView *texture_image_view)
 {
-  *n_vertices = 3;
-  uint32_t vertex_buffer_size = 3 * 6 * sizeof(float); // x y z w u v;
+  uint32_t const nvxs = 3;
+  *n_vertices = nvxs;
+  uint32_t vertex_buffer_size = nvxs * 6 * sizeof(float); // x y z w u v;
   re(CreateVertexBuffer(
       physical_device, device, vertex_buffer_size,
       vertex_buffer, vertex_memory));
 
-  float vertex_data[3 * 6] = {
+  float vertex_data[nvxs * 6] = {
       -1.0f,  1.0f, 0.5f, 1.0f, 0.0f, 1.0f,
        1.0f,  1.0f, 0.5f, 1.0f, 1.0f, 1.0f,
-      -1.0f, -1.0f, 0.5f, 1.0f, 0.0f, 0.0f
+      -1.0f, -1.0f, 0.5f, 1.0f, 0.0f, 0.0f,
+/*
+      -1.0f, -1.0f, 0.5f, 1.0f, 0.0f, 0.0f,
+       1.0f,  1.0f, 0.5f, 1.0f, 1.0f, 1.0f,
+       1.0f, -1.0f, 0.5f, 1.0f, 1.0f, 0.0f, */
   }; 
 
   re(MapAndInitializeMemory (device, *vertex_memory, vertex_data, sizeof(vertex_data)));
@@ -2386,7 +2418,7 @@ int main(int argc, char **argv)
   tr(InitVulkanDevice(instance, &physical_device, &queue_family, &device_features));
 
   VkFormat surface_format = VK_FORMAT_B8G8R8A8_UNORM;
-  VkExtent2D surface_extent {640, 480};
+  VkExtent2D surface_extent {1920, 1080};
   VkSurfaceKHR surface;
   GLFWwindow *window;
   tr(CreateWindowSurface(
@@ -2412,7 +2444,6 @@ int main(int argc, char **argv)
       &vertex_buffer, &vertex_memory, &n_vertices,
       &uniform_buffer, &uniform_memory,
       &texture_image, &texture_memory, &texture_image_view));
-
 
   VkCommandPool command_pool;
   VkQueue queue;
@@ -2458,8 +2489,8 @@ int main(int argc, char **argv)
 
   VkShaderModule vertex_shader_module;
   tr(CreateVertexShaderModule(device, &vertex_shader_module));
-  VkShaderModule fragment_shader_module;
 
+  VkShaderModule fragment_shader_module;
   tr(CreateFragmentShaderModule(device, &fragment_shader_module));
 
   VkDescriptorPool descriptor_pool;
@@ -2504,7 +2535,10 @@ int main(int argc, char **argv)
   tr(QueueSubmit (queue, command_buffer, present_complete, render_complete));
   tr(QueuePresent (queue, swapchain, n_swapchain_image, render_complete));
 
-  sleep(2);
+
+  while (!glfwWindowShouldClose(window)) {
+    glfwPollEvents();
+  }
 
   return 0;
 }
